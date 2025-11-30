@@ -1,0 +1,60 @@
+default_platform(:android)
+
+platform :android do
+  desc "Build and upload AAB to Google Play Internal Testing"
+  lane :deploy_internal do
+    gradle(task: "clean")
+
+    sh "flutter build appbundle --release"
+
+    upload_to_play_store(
+      track: "internal",
+      aab: "build/app/outputs/bundle/release/app-release.aab",
+      skip_upload_metadata: true,
+      skip_upload_changelogs: false,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+  end
+
+  desc "Build and upload AAB to Production"
+  lane :deploy_production do
+    gradle(task: "clean")
+
+    sh "flutter build appbundle --release"
+
+    upload_to_play_store(
+      track: "production",
+      aab: "build/app/outputs/bundle/release/app-release.aab",
+      skip_upload_metadata: false,
+      skip_upload_changelogs: false,
+      skip_upload_images: false,
+      skip_upload_screenshots: false
+    )
+  end
+platform :ios do
+  desc "Build and upload IPA to TestFlight"
+  lane :beta do
+    build_app(
+      scheme: "Runner",
+      export_method: "app-store",
+    )
+
+    upload_to_testflight(
+      skip_waiting_for_build_processing: false
+    )
+  end
+
+  desc "Build and upload IPA to App Store"
+  lane :release do
+    build_app(
+      scheme: "Runner",
+      export_method: "app-store",
+    )
+
+    upload_to_app_store(
+      submit_for_review: false
+    )
+  end
+end
+

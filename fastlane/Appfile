@@ -1,0 +1,2 @@
+json_key_file("fastlane/api.json") # Play Store API JSON
+package_name("com.yourcompany.ysmediaplayerpro")
