@@ -1,76 +1,101 @@
-name: Release Build
+name: Release
 
 on:
   push:
     tags:
-      - 'v*.*.*'   # Example: v1.0.0, v2.1.5
+      - "v*.*.*"   # Example: v1.0.0, v1.2.3
 
 jobs:
   build-release:
+    name: Build Release Artifacts
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]   # Android only for now
+        # To also build iOS later, add: macos-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.24.0"
+          channel: "stable"
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Pub get
+        run: flutter pub get
+
+      # --- OPTIONAL: Run tests again before releasing ---
+      - name: Run tests
+        run: flutter test --no-pub
+
+      # ========== ANDROID BUILD (AAB + APK) ==========
+      - name: Build Android App Bundle (AAB)
+        run: flutter build appbundle --release
+
+      - name: Build Android APK (release)
+        run: flutter build apk --release
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: |
+            build/app/outputs/bundle/release/app-release.aab
+            build/app/outputs/flutter-apk/app-release.apk
+
+      # ========== iOS BUILD (OPTIONAL – REQUIRES macOS) ==========
+      # Uncomment after you add macos-latest to the matrix and
+      # have an Apple Developer account + certificates.
+      #
+      # - name: Set up Xcode signing
+      #   if: runner.os == 'macOS'
+      #   env:
+      #     APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+      #     APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      #   run: |
+      #     echo "$APPLE_CERT_BASE64" | base64 --decode > ios_signing_cert.p12
+      #     security import ios_signing_cert.p12 -P "$APPLE_CERT_PASSWORD" -A
+
+      # - name: Build iOS archive
+      #   if: runner.os == 'macOS'
+      #   run: |
+      #     flutter build ipa --release \
+      #       --export-options-plist=ios/ExportOptions.plist
+
+      # - name: Upload iOS artifacts
+      #   if: runner.os == 'macOS'
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: ios-release
+      #     path: build/ios/ipa/*.ipa
+
+  # ========== OPTIONAL: PUBLISH TO GITHUB RELEASE ==========
+  publish:
+    name: Attach artifacts to GitHub Release
+    needs: build-release
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
         with:
-          channel: stable
+          path: artifacts
 
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Run tests
-        run: flutter test --coverage
-
-      - name: Build Android App Bundle
-        run: flutter build appbundle --release
-
-      - name: Upload Android AAB Artifact
-        uses: actions/upload-artifact@v3
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: android-release-aab
-          path: build/app/outputs/bundle/release/app-release.aab
-      - name: Install Fastlane
-        run: sudo gem install fastlane
-
-      - name: Android Play Store Deploy
-        if: startsWith(github.ref, 'refs/tags/')
-        run: fastlane android deploy_internal
-
-
-  ios-build:
-    runs-on: macos-latest
-    if: runner.os == 'macOS'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Install CocoaPods
-        run: |
-          cd ios
-          pod install --repo-update
-
-      - name: Build iOS Archive
-        run: |
-          flutter build ipa --release \
-          --export-options-plist=ios/exportOptions.plist
-      - name: iOS TestFlight Deploy
-        if: startsWith(github.ref, 'refs/tags/')
-        run: fastlane ios beta
-
-      - name: Upload iOS IPA Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: ios-release-ipa
-          path: build/ios/ipa/*.ipa
+          files: |
+            artifacts/android-release/app-release.aab
+            artifacts/android-release/app-release.apk
+            # artifacts/ios-release/*.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
